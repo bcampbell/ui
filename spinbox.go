@@ -21,17 +21,17 @@ var spinboxes = make(map[*C.uiSpinbox]*Spinbox)
 // enter integers. The space also comes with buttons to add or
 // subtract 1 from the integer.
 type Spinbox struct {
-	c	*C.uiControl
-	s	*C.uiSpinbox
+	c *C.uiControl
+	s *C.uiSpinbox
 
-	onChanged		func(*Spinbox)
+	onChanged func(*Spinbox)
 }
 
 // NewSpinbox creates a new Spinbox. If min >= max, they are swapped.
 func NewSpinbox(min int, max int) *Spinbox {
 	s := new(Spinbox)
 
-	s.s = C.uiNewSpinbox(C.intmax_t(min), C.intmax_t(max))
+	s.s = C.uiNewSpinbox(C.int(min), C.int(max))
 	s.c = (*C.uiControl)(unsafe.Pointer(s.s))
 
 	C.realuiSpinboxOnChanged(s.s)
@@ -93,7 +93,7 @@ func (s *Spinbox) Value() int {
 
 // SetText sets the Spinbox's current value to value.
 func (s *Spinbox) SetValue(value int) {
-	C.uiSpinboxSetValue(s.s, C.intmax_t(value))
+	C.uiSpinboxSetValue(s.s, C.int(value))
 }
 
 // OnChanged registers f to be run when the user changes the value
