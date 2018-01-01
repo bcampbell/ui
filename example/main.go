@@ -16,7 +16,7 @@ func (d *Dat) ColumnType(m *ui.TableModel, col int) ui.TableModelColumnType {
 }
 
 func (d *Dat) NumRows(m *ui.TableModel) int {
-	return 100
+	return 1000
 }
 
 func (d *Dat) CellValue(m *ui.TableModel, row int, col int) interface{} {
@@ -39,9 +39,13 @@ func main() {
 
 		dat := &Dat{}
 		model := ui.NewTableModel(dat)
-		table := ui.NewTable(model)
+		table := ui.NewTable(model, ui.TableStyleMultiSelect)
 		table.AppendTextColumn("one", 0)
 		table.AppendTextColumn("two", 1)
+		table.OnSelectionChanged(func(t *ui.Table) {
+			selected := t.GetSelection()
+			fmt.Printf("selected: %v\n", selected)
+		})
 		box.Append(table, true)
 
 		window := ui.NewWindow("Hello", 200, 100, false)

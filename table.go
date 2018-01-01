@@ -19,7 +19,12 @@ import "C"
 // no need to lock this; only the GUI thread can access it
 var tablemodels = make(map[*C.uiTableModel]*TableModel)
 
+//
 type TableModel struct {
+	handler TableModelHandler
+	// refCount holds number of Table controls currently using this model
+	refCount int
+
 	m *C.uiTableModel
 	// TODO: in libui, could add an accessor to get handler from model...
 	// (all uiTableModel implementations hold a pointer to the handler anyway)
@@ -27,29 +32,54 @@ type TableModel struct {
 }
 
 func NewTableModel(handler TableModelHandler) *TableModel {
-	m := &TableModel{}
-	m.h = registerTableModeHandler(handler)
-	m.m = C.uiNewTableModel(m.h)
-	tablemodels[m.m] = m
+	// leave underlying C objects nil until first incRef
+	m := &TableModel{
+		handler:  handler,
+		refCount: 0,
+		m:        nil,
+		h:        nil,
+	}
 	return m
 }
 
-func (m *TableModel) Destroy() {
-	delete(tablemodels, m.m)
-	C.uiFreeTableModel(m.m)
-	unregisterTableModelHandler(m.h)
+func (m *TableModel) incRef() {
+	if m.refCount == 0 {
+		// first table attaching - time to create the actual libui C objects
+		m.h = registerTableModeHandler(m.handler)
+		m.m = C.uiNewTableModel(m.h)
+		tablemodels[m.m] = m
+	}
+	m.refCount++
+}
+
+func (m *TableModel) decRef() {
+	m.refCount--
+	if m.refCount == 0 {
+		// last table using this model - free up the libui C objects
+		delete(tablemodels, m.m)
+		C.uiFreeTableModel(m.m)
+		unregisterTableModelHandler(m.h)
+		m.m = nil
+		m.h = nil
+	}
 }
 
 func (m *TableModel) RowInserted(newIndex int) {
-	C.uiTableModelRowInserted(m.m, C.int(newIndex))
+	if m.m != nil {
+		C.uiTableModelRowInserted(m.m, C.int(newIndex))
+	}
 }
 
 func (m *TableModel) RowChanged(index int) {
-	C.uiTableModelRowChanged(m.m, C.int(index))
+	if m.m != nil {
+		C.uiTableModelRowChanged(m.m, C.int(index))
+	}
 }
 
 func (m *TableModel) RowDeleted(oldIndex int) {
-	C.uiTableModelRowDeleted(m.m, C.int(oldIndex))
+	if m.m != nil {
+		C.uiTableModelRowDeleted(m.m, C.int(oldIndex))
+	}
 }
 
 // -------------
@@ -60,18 +90,26 @@ var tables = make(map[*C.uiTable]*Table)
 
 // Table is... TODO
 type Table struct {
-	c *C.uiControl
-	t *C.uiTable
+	model *TableModel
+	c     *C.uiControl
+	t     *C.uiTable
 
 	onSelectionChanged func(*Table)
 }
 
-// NewTable creates a new Table control
-// TODO: style flags
-func NewTable(m *TableModel) *Table {
-	t := new(Table)
-	var styleFlags int = 0
+type TableStyleFlags uint
 
+const (
+	TableStyleMultiSelect TableStyleFlags = 1 << iota
+)
+
+// NewTable creates a new Table control
+func NewTable(m *TableModel, styleFlags TableStyleFlags) *Table {
+
+	m.incRef()
+
+	t := new(Table)
+	t.model = m
 	//ctext := C.CString(text)
 	t.t = C.uiNewTable(m.m, C.int(styleFlags))
 	t.c = (*C.uiControl)(unsafe.Pointer(t.t))
@@ -83,10 +121,12 @@ func NewTable(m *TableModel) *Table {
 	return t
 }
 
-// Destroy destroys the Button.
+// Destroy destroys the Table.
 func (t *Table) Destroy() {
 	delete(tables, t.t)
 	C.uiControlDestroy(t.c)
+
+	t.model.decRef()
 }
 
 // LibuiControl returns the libui uiControl pointer that backs
@@ -140,4 +180,18 @@ func (t *Table) AppendTextColumn(name string, modelColumn int) {
 	tmpName := C.CString(name)
 	C.uiTableAppendTextColumn(t.t, tmpName, C.int(modelColumn))
 	freestr(tmpName)
+}
+
+// GetSelection returns the set of currently-selected rows in the table.
+// If no rows are selected, an empty slice will be returned.
+func (t *Table) GetSelection() []int {
+	sel := []int{}
+	it := C.uiTableGetSelection(t.t)
+	for C.uiTableIterAdvance(it) > 0 {
+		idx := int(C.uiTableIterCurrent(it))
+		sel = append(sel, idx)
+	}
+	C.uiTableIterComplete(it)
+
+	return sel
 }
