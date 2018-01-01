@@ -3,57 +3,204 @@ package main
 import (
 	"fmt"
 	"github.com/bcampbell/ui"
+	"github.com/icrowley/fake"
+	"math/rand"
+	"sort"
+	"strconv"
 )
 
-type Dat struct{}
-
-func (d *Dat) NumColumns(m *ui.TableModel) int {
-	return 2
+type Person struct {
+	FirstName string
+	LastName  string
+	ShoeSize  int
 }
 
-func (d *Dat) ColumnType(m *ui.TableModel, col int) ui.TableModelColumnType {
+type PersonDB struct {
+	People []Person
+}
+
+// implement the TableModelHandler interface
+
+func (db *PersonDB) NumColumns(m *ui.TableModel) int {
+	return 3
+}
+
+func (db *PersonDB) ColumnType(m *ui.TableModel, col int) ui.TableModelColumnType {
 	return ui.StringColumn
 }
 
-func (d *Dat) NumRows(m *ui.TableModel) int {
-	return 1000
+func (db *PersonDB) NumRows(m *ui.TableModel) int {
+	return len(db.People)
 }
 
-func (d *Dat) CellValue(m *ui.TableModel, row int, col int) interface{} {
-	return fmt.Sprintf("value %d,%d", row, col)
+func (db *PersonDB) CellValue(m *ui.TableModel, row int, col int) interface{} {
+	prod := &db.People[row]
+	switch col {
+	case 0:
+		return prod.FirstName
+	case 1:
+		return prod.LastName
+	case 2:
+		return strconv.Itoa(prod.ShoeSize)
+	}
+	return nil
 }
 
-func (d *Dat) SetCellValue(*ui.TableModel, int, int, interface{}) {
+func (db *PersonDB) SetCellValue(*ui.TableModel, int, int, interface{}) {
+	// TODO
 }
 
-func main() {
-	err := ui.Main(func() {
-		input := ui.NewEntry()
-		button := ui.NewButton("Greet")
-		greeting := ui.NewLabel("")
+func RandomPerson() Person {
+	p := Person{}
+	p.FirstName = fake.FirstName()
+	p.LastName = fake.LastName()
+	p.ShoeSize = 8 + rand.Intn(10)
+	return p
+}
+
+type App struct {
+	db PersonDB
+
+	table           *ui.Table
+	model           *ui.TableModel
+	firstNameInput  *ui.Entry
+	lastNameInput   *ui.Entry
+	shoeSizeInput   *ui.Spinbox
+	createButton    *ui.Button
+	deleteButton    *ui.Button
+	selSummaryLabel *ui.Label
+}
+
+func (app *App) Init() {
+	for i := 0; i < 10; i++ {
+		app.db.People = append(app.db.People, RandomPerson())
+	}
+}
+
+func (app *App) rethink() {
+	invalid := app.firstNameInput.Text() == "" || app.lastNameInput.Text() == ""
+
+	if invalid {
+		app.createButton.Disable()
+	} else {
+		app.createButton.Enable()
+	}
+}
+
+func (app *App) buildGUI() ui.Control {
+
+	app.firstNameInput = ui.NewEntry()
+	app.lastNameInput = ui.NewEntry()
+	app.shoeSizeInput = ui.NewSpinbox(8, 18)
+
+	//button := ui.NewButton("Greet")
+	//greeting := ui.NewLabel("")
+
+	vbox := ui.NewVerticalBox()
+
+	// table display
+	app.model = ui.NewTableModel(&app.db)
+	table := ui.NewTable(app.model, ui.TableStyleMultiSelect)
+	table.AppendTextColumn("FirstName", 0)
+	table.AppendTextColumn("LastName", 1)
+	table.AppendTextColumn("ShoeSize", 2)
+	table.OnSelectionChanged(func(t *ui.Table) {
+		app.HandleSelectionChanged()
+	})
+	vbox.Append(table, true)
+	app.table = table
+
+	// data entry
+	grp := ui.NewGroup("Enter person details")
+	{
+		// Hmm... think we really want a form here, but ui doesn't seem to support it yet
 		box := ui.NewVerticalBox()
-		box.Append(ui.NewLabel("Enter your name:"), false)
-		box.Append(input, false)
-		box.Append(button, false)
-		box.Append(greeting, false)
+		box.SetPadded(true)
+		box.Append(ui.NewLabel("First name"), false)
+		box.Append(app.firstNameInput, false)
+		box.Append(ui.NewLabel("Last name"), false)
+		box.Append(app.lastNameInput, false)
+		box.Append(ui.NewLabel("Shoe size"), false)
+		box.Append(app.shoeSizeInput, false)
 
-		dat := &Dat{}
-		model := ui.NewTableModel(dat)
-		table := ui.NewTable(model, ui.TableStyleMultiSelect)
-		table.AppendTextColumn("one", 0)
-		table.AppendTextColumn("two", 1)
-		table.OnSelectionChanged(func(t *ui.Table) {
-			selected := t.GetSelection()
-			fmt.Printf("selected: %v\n", selected)
-		})
-		box.Append(table, true)
+		app.createButton = ui.NewButton("Create")
+		box.Append(app.createButton, false)
+		grp.SetChild(box)
+	}
 
-		window := ui.NewWindow("Hello", 200, 100, false)
-		window.SetMargined(true)
-		window.SetChild(box)
+	vbox.Append(grp, false)
+
+	app.selSummaryLabel = ui.NewLabel("")
+	vbox.Append(app.selSummaryLabel, false)
+	app.deleteButton = ui.NewButton("Delete")
+	vbox.Append(app.deleteButton, false)
+
+	// wire up behaviour
+	/*
 		button.OnClicked(func(*ui.Button) {
 			greeting.SetText("Hello, " + input.Text() + "!")
 		})
+	*/
+
+	app.firstNameInput.OnChanged(func(e *ui.Entry) { app.rethink() })
+	app.lastNameInput.OnChanged(func(e *ui.Entry) { app.rethink() })
+
+	app.createButton.OnClicked(func(b *ui.Button) {
+		p := Person{
+			FirstName: app.firstNameInput.Text(),
+			LastName:  app.lastNameInput.Text(),
+			ShoeSize:  app.shoeSizeInput.Value(),
+		}
+		app.db.People = append(app.db.People, p)
+		app.model.RowInserted(len(app.db.People) - 1)
+		app.firstNameInput.SetText("")
+		app.lastNameInput.SetText("")
+		app.rethink()
+	})
+	app.deleteButton.OnClicked(func(b *ui.Button) { app.DeleteSelected() })
+	app.rethink()
+	return vbox
+}
+
+func (app *App) HandleSelectionChanged() {
+
+	sel := app.table.GetSelection()
+
+	summary := fmt.Sprintf("%d selected", len(sel))
+	app.selSummaryLabel.SetText(summary)
+
+	fmt.Printf("selected: %v\n", sel)
+	if len(sel) > 0 {
+		app.deleteButton.Enable()
+	} else {
+		app.deleteButton.Disable()
+	}
+
+}
+
+func (app *App) DeleteSelected() {
+	sel := app.table.GetSelection()
+	// remove highest-first so we don't screw up our indices
+	sort.Sort(sort.Reverse(sort.IntSlice(sel)))
+	for _, idx := range sel {
+		app.db.People = append(app.db.People[:idx], app.db.People[idx+1:]...)
+		app.model.RowDeleted(idx)
+	}
+	app.HandleSelectionChanged()
+}
+
+func main() {
+
+	err := ui.Main(func() {
+		app := &App{}
+
+		app.Init()
+
+		gui := app.buildGUI()
+
+		window := ui.NewWindow("Hello", 200, 100, false)
+		window.SetMargined(true)
+		window.SetChild(gui)
 		window.OnClosing(func(*ui.Window) bool {
 			ui.Quit()
 			return true
