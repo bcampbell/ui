@@ -21,17 +21,17 @@ var sliders = make(map[*C.uiSlider]*Slider)
 // a range of integers. The user can drag a pointer on the bar to
 // select an integer.
 type Slider struct {
-	c	*C.uiControl
-	s	*C.uiSlider
+	c *C.uiControl
+	s *C.uiSlider
 
-	onChanged		func(*Slider)
+	onChanged func(*Slider)
 }
 
 // NewSlider creates a new Slider. If min >= max, they are swapped.
 func NewSlider(min int, max int) *Slider {
 	s := new(Slider)
 
-	s.s = C.uiNewSlider(C.intmax_t(min), C.intmax_t(max))
+	s.s = C.uiNewSlider(C.int(min), C.int(max))
 	s.c = (*C.uiControl)(unsafe.Pointer(s.s))
 
 	C.realuiSliderOnChanged(s.s)
@@ -90,7 +90,7 @@ func (s *Slider) Value() int {
 
 // SetText sets the Slider's current value to value.
 func (s *Slider) SetValue(value int) {
-	C.uiSliderSetValue(s.s, C.intmax_t(value))
+	C.uiSliderSetValue(s.s, C.int(value))
 }
 
 // OnChanged registers f to be run when the user changes the value
