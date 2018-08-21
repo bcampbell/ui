@@ -2,6 +2,7 @@ package main
 
 import (
 	//	"fmt"
+	"fmt"
 	"github.com/bcampbell/ui"
 	"github.com/icrowley/fake"
 	"math/rand"
@@ -99,15 +100,16 @@ func (app *App) buildGUI() ui.Control {
 	// table display
 
 	app.model = ui.NewTableModel(&app.db)
-	table := ui.NewTable(&ui.TableParams{app.model, -1})
+	table := ui.NewTable(&ui.TableParams{
+		Model: app.model,
+		RowBackgroundColorModelColumn: -1,
+		MultiSelect:                   true})
 	table.AppendTextColumn("FirstName", 0, -1, nil)
 	table.AppendTextColumn("LastName", 1, -1, nil)
 	table.AppendTextColumn("ShoeSize", 2, -1, nil)
-	/*
-		table.OnSelectionChanged(func(t *ui.Table) {
-			app.HandleSelectionChanged()
-		})
-	*/
+	table.OnSelectionChanged(func(t *ui.Table) {
+		app.HandleSelectionChanged()
+	})
 	vbox.Append(table, true)
 	app.table = table
 
@@ -156,9 +158,11 @@ func (app *App) buildGUI() ui.Control {
 	return vbox
 }
 
-/*
 func (app *App) HandleSelectionChanged() {
+	fmt.Printf("bing\n")
+}
 
+/*
 	sel := app.table.GetSelection()
 
 	summary := fmt.Sprintf("%d selected", len(sel))

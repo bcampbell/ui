@@ -17,6 +17,11 @@ import (
 // {
 // 	free(p);
 // }
+// extern void doTableOnSelectionChanged(uiTable *, void *);
+// static inline void realuiTableOnSelectionChanged(uiTable *t)
+// {
+// 	uiTableOnSelectionChanged(t, doTableOnSelectionChanged, NULL);
+// }
 import "C"
 
 // -------------
@@ -122,6 +127,7 @@ type Table struct {
 type TableParams struct {
 	Model                         *TableModel
 	RowBackgroundColorModelColumn int
+	MultiSelect                   bool
 }
 
 // NewTable creates a new Table control
@@ -132,6 +138,11 @@ func NewTable(params *TableParams) *Table {
 	cp := C.uiTableParams{}
 	cp.Model = params.Model.m
 	cp.RowBackgroundColorModelColumn = C.int(params.RowBackgroundColorModelColumn)
+	if params.MultiSelect {
+		cp.MultiSelect = 1
+	} else {
+		cp.MultiSelect = 0
+	}
 
 	t := new(Table)
 	t.model = params.Model
@@ -139,7 +150,7 @@ func NewTable(params *TableParams) *Table {
 	t.t = C.uiNewTable((*C.uiTableParams)(unsafe.Pointer(&cp)))
 	t.c = (*C.uiControl)(unsafe.Pointer(t.t))
 
-	//C.realuiTableOnSelectionChanged(t.t)
+	C.realuiTableOnSelectionChanged(t.t)
 	tables[t.t] = t
 
 	return t
@@ -183,6 +194,21 @@ func (t *Table) Enable() {
 // Disable disables the Table control.
 func (t *Table) Disable() {
 	C.uiControlDisable(t.c)
+}
+
+// OnSelectionChanged registers f to be run when the set of selected
+// items in the table changes.
+// Only one function can be registered at a time.
+func (t *Table) OnSelectionChanged(f func(*Table)) {
+	t.onSelectionChanged = f
+}
+
+//export doTableOnSelectionChanged
+func doTableOnSelectionChanged(tt *C.uiTable, data unsafe.Pointer) {
+	t := tables[tt]
+	if t.onSelectionChanged != nil {
+		t.onSelectionChanged(t)
+	}
 }
 
 func (t *Table) AppendTextColumn(name string, modelColumn int, editableModelColumn int, params *TextColumnOptionalParams) {
